@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Room Auction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column. A status card with the auction clock, the rooms as one
+   panel of rows with a large price and one button each, then players, the
+   invite link, host settings and the rules. */
+:root{
+  --bg:#f3f5f2; --surface:#ffffff; --ink:#12201d; --muted:#5a6966; --line:#dce2de; --soft:#ebf0ec;
+  --accent:#c8460a; --accent-ink:#ffffff; --accent-press:#ae3c07;
+  --ok:#1c7a5a; --ok-soft:#e4f3ec; --warn:#9c4410; --warn-soft:#fbeee4;
+  --display:"Space Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --text:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0e1413; --surface:#161f1d; --ink:#e8f0ed; --muted:#93a39f; --line:#27332f; --soft:#1d2826;
+    --accent:#ff8a3d; --accent-ink:#1d0e02; --accent-press:#ffa063;
+    --ok:#63d3a8; --ok-soft:#14302a; --warn:#f0a56c; --warn-soft:#33210f;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);font-size:16px;line-height:1.5}
+.page{max-width:760px;margin:0 auto;padding:20px 18px 56px;display:flex;flex-direction:column;gap:22px}
+p{margin:0}
+h1{font-family:var(--display);font-size:clamp(1.8rem,5.4vw,2.6rem);line-height:1.1;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:.8125rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:600;letter-spacing:-.01em}
+.mark{width:22px;height:22px;border-radius:50%;border:3px solid var(--ink);border-right-color:var(--accent);flex:none}
+.pill{font-size:.8125rem;padding:4px 11px;border-radius:999px;background:var(--soft);color:var(--muted);display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.on::before{background:var(--ok)}
+.pill.off::before{background:var(--warn)}
+
+.landing{display:flex;flex-direction:column;gap:18px;align-items:flex-start;padding:28px 0 8px}
+.landing p{max-width:58ch;color:var(--muted)}
+
+.status{display:flex;align-items:center;justify-content:space-between;gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px}
+.statustext{min-width:0}
+.big{font-family:var(--display);font-size:clamp(1.5rem,4.6vw,2.1rem);font-weight:600;line-height:1.15;letter-spacing:-.02em;text-wrap:balance;font-variant-numeric:tabular-nums}
+.sub{margin-top:6px;color:var(--muted)}
+.flash{margin-top:8px;font-weight:600;color:var(--ok)}
+.ring{position:relative;width:84px;height:84px;flex:none}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg);display:block}
+.ring circle{fill:none;stroke-width:6}
+.ring .track{stroke:var(--soft)}
+.ring .arc{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:169.65;stroke-dashoffset:0;transition:stroke-dashoffset .2s linear}
+.ring span{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:1.5rem;font-variant-numeric:tabular-nums}
+
+.note{background:var(--warn-soft);color:var(--warn);border-radius:var(--r);padding:12px 16px;font-weight:500}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.room{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(200px,auto);align-items:center;gap:8px 20px;padding:18px 22px;border-top:1px solid var(--line)}
+.room:first-child{border-top:0}
+.room.mine{background:var(--ok-soft)}
+.rname{font-weight:600;display:block}
+.rmeta{display:block;color:var(--muted);font-size:.875rem}
+.rprice{font-family:var(--display);font-size:clamp(1.9rem,6vw,2.5rem);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.room.taken .rprice{color:var(--muted)}
+.ract{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.owner{font-weight:600;color:var(--ok);text-align:right}
+@keyframes drop{from{color:var(--accent)}to{color:inherit}}
+.rprice.drop{animation:drop .7s ease-out}
+
+button{font:inherit;color:var(--ink);cursor:pointer}
+.take{background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;padding:13px 16px;font-weight:600;font-variant-numeric:tabular-nums;transition:background .15s,transform .05s}
+.take:hover:not(:disabled){background:var(--accent-press)}
+.take:active:not(:disabled){transform:translateY(1px)}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:10px;padding:9px 13px}
+.ghost:hover:not(:disabled){background:var(--soft)}
+button:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+input,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;max-width:100%}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8125rem;color:var(--muted)}
+.rowf{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.join{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 22px}
+.join label{flex:1;min-width:160px}
+.join input{width:100%}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
+.chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 12px 5px 6px;max-width:100%}
+.chip.you{border-color:var(--ink)}
+.av{width:26px;height:26px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:.75rem;font-weight:600;font-family:var(--display);flex:none}
+.chip small{color:var(--muted);font-size:.8125rem}
+.chip button{border:0;background:none;color:var(--muted);padding:0 2px;font-size:.8125rem;text-decoration:underline}
+.empty{color:var(--muted)}
+
+.linkrow{display:flex;gap:8px}
+.linkrow input{flex:1;font-size:.875rem;color:var(--muted)}
+.hint{color:var(--muted);font-size:.875rem;margin-top:6px}
+
+details.host>summary{cursor:pointer;padding:16px 22px;font-weight:600;font-family:var(--display)}
+.hostbody{padding:2px 22px 22px;display:flex;flex-direction:column;gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.grid input{width:100%}
+textarea{width:100%;min-height:6em;resize:vertical}
+
+.resultbody{padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+table{border-collapse:collapse;width:100%}
+th{font-size:.8125rem;color:var(--muted);font-weight:500}
+th,td{text-align:left;padding:8px 10px 8px 0;border-bottom:1px solid var(--line)}
+td.num,th.num{text-align:right;padding-right:0;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:600;border-bottom:0}
+.rules p{color:var(--muted);max-width:68ch}
+footer{color:var(--muted);font-size:.8125rem}
+
+@media (max-width:600px){
+  .room{grid-template-columns:minmax(0,1fr) auto;padding:16px}
+  .ract{grid-column:1 / -1}
+  .owner{text-align:left}
+  .status{padding:16px}
+  .ring{width:68px;height:68px}
+  .ring span{font-size:1.25rem}
+}
+@media (prefers-reduced-motion: reduce){
+  .rprice.drop{animation:none}
+  .ring .arc{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span>Room auction</span></div>
+    <span id="conn" class="pill" hidden>Connecting</span>
+  </header>
+
+  <main id="landing" class="landing" hidden>
+    <h1>Let the prices fall until someone takes each room.</h1>
+    <p>Every room opens at the same high price and drops in steps. The first person to click a room gets it at that price. The last person gets the last room for whatever is left of the rent.</p>
+    <button id="create" class="take" type="button">Create an auction room</button>
+    <p id="createmsg" class="sub"></p>
+  </main>
+
+  <main id="app" hidden>
+    <div class="page" style="padding:0;gap:22px">
+      <section class="status">
+        <div class="statustext">
+          <p id="status" class="big" aria-live="polite">Connecting…</p>
+          <p id="me" class="sub"></p>
+          <p id="flash" class="flash" aria-live="polite" hidden></p>
+        </div>
+        <div class="ring" id="ring" aria-hidden="true" hidden>
+          <svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="27"/><circle class="arc" id="arc" cx="32" cy="32" r="27"/></svg>
+          <span id="ringnum"></span>
+        </div>
+      </section>
+
+      <p id="note" class="note" hidden></p>
+
+      <form id="joinform" class="join rowf" hidden>
+        <label>Your name
+          <input id="join-name" type="text" maxlength="24" autocomplete="off">
+        </label>
+        <button class="take" type="submit">Join the auction</button>
+      </form>
+
+      <section class="panel" id="rooms" aria-label="Rooms" hidden></section>
+
+      <section id="result" class="panel" hidden>
+        <div class="resultbody">
+          <h2 style="margin:0">Result</h2>
+          <table>
+            <thead><tr><th>Room</th><th>Person</th><th class="num">Rent per month</th></tr></thead>
+            <tbody id="result-body"></tbody>
+          </table>
+          <div class="rowf"><button id="copy" class="ghost" type="button">Copy result</button><span id="copymsg" class="hint" style="margin:0"></span></div>
+          <textarea id="copytext" readonly hidden></textarea>
+        </div>
+      </section>
+
+      <section id="players-sec" hidden>
+        <h2>Players</h2>
+        <ul id="players" class="chips"></ul>
+      </section>
+
+      <section id="invite" hidden>
+        <h2>Invite link</h2>
+        <div class="linkrow">
+          <input id="link" type="text" readonly aria-label="Invite link">
+          <button id="copylink" class="ghost" type="button">Copy</button>
+        </div>
+        <p class="hint">Anyone with this link can join. No account needed.</p>
+      </section>
+
+      <details id="host" class="panel host" hidden>
+        <summary>Host settings</summary>
+        <div class="hostbody">
+          <label>Rooms, one per line
+            <textarea id="cfg-rooms"></textarea>
+          </label>
+          <div class="grid">
+            <label>Rooms must add up to (€)
+              <input id="cfg-total" type="number" min="1" step="1">
+            </label>
+            <label>Opening price (€)
+              <input id="cfg-start" type="number" min="1" step="1">
+            </label>
+            <label>Each drop (€)
+              <input id="cfg-step" type="number" min="1" step="1">
+            </label>
+            <label>Seconds per drop
+              <input id="cfg-tick" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="rowf">
+            <button id="start" type="button" class="take">Start auction</button>
+            <button id="save" type="button" class="ghost">Save settings</button>
+            <button id="reset" type="button" class="ghost">Stop and reset</button>
+          </div>
+          <p id="hostmsg" class="hint" style="margin:0"></p>
+          <form id="proxyform" class="rowf">
+            <label style="flex:1;min-width:180px">Add someone who can't click themselves
+              <input id="proxy-name" type="text" maxlength="24" autocomplete="off">
+            </label>
+            <button class="ghost" type="submit">Add</button>
+          </form>
+        </div>
+      </details>
+
+      <section class="rules" id="rules-sec" hidden>
+        <h2>How it works</h2>
+        <p id="rules"></p>
+      </section>
+    </div>
+  </main>
+
+  <footer><p id="foot"></p></footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/*ENGINE-START*/
+const E = (() => {
+  function round2(x){ return Math.round(x * 100) / 100; }
+  // Price every unclaimed room shows at time t, before the floor applies.
+  function clock(cfg, startAt, t){
+    if(!startAt || t < startAt) return cfg.start;
+    const ticks = Math.floor((t - startAt) / (cfg.tick * 1000));
+    return cfg.start - cfg.step * ticks;
+  }
+  // claims: one entry per room, {owner,name,price} or null.
+  function model(cfg, n, claims, players, startAt, t){
+    const out = {phase:'idle', rows:[], price:cfg.start, floor:0, atFloor:false, nextDropIn:0, unclaimed:n, startsIn:0};
+    const rows = [];
+    let sum = 0, cnt = 0, i;
+    for(i = 0; i < n; i++){
+      const c = claims[i] || null;
+      rows.push(c ? {owner:c.owner, name:c.name, price:c.price, auto:false} : null);
+      if(c){ sum += c.price; cnt++; }
+    }
+    let u = n - cnt;
+    out.rows = rows; out.unclaimed = u;
+    if(!startAt) return out;
+    if(t < startAt){ out.phase = 'lead'; out.startsIn = startAt - t; return out; }
+    const floor = u ? round2((cfg.total - sum) / u) : 0;
+    const ck = clock(cfg, startAt, t);
+    out.floor = floor;
+    out.atFloor = u > 0 && ck <= floor;
+    out.price = u === 1 ? floor : Math.max(floor, ck);
+    if(u === 1 && n > 1){
+      const free = players.filter(p => !rows.some(r => r && r.owner === p.id));
+      if(free.length === 1){
+        for(i = 0; i < n; i++){
+          if(!rows[i]) rows[i] = {owner:free[0].id, name:free[0].name, price:floor, auto:true};
+        }
+        u = 0;
+      }
+    }
+    out.unclaimed = u;
+    if(u === 0){ out.phase = 'done'; return out; }
+    out.phase = 'running';
+    const tm = cfg.tick * 1000;
+    out.nextDropIn = tm - ((t - startAt) % tm);
+    return out;
+  }
+  return {clock, model, round2};
+})();
+/*ENGINE-END*/
+
+const $ = id => document.getElementById(id);
+const BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081/mqtt'];
+const LEAD = 10000;      // countdown before prices start to drop
+const SETTLE = 600;      // the host waits this long for competing clicks, then the earliest click wins
+const BEAT = 4000;       // the host re-sends the state this often
+const HOST_GONE = 11000;
+const RING = 169.65;
+const DEF = {v:0, run:0, startAt:0, ht:0,
+  cfg:{start:1500, step:10, tick:10, total:2550},
+  rooms:['Front room, 17.6 m²', 'Souterrain, 17.1 m²', 'Back right room, 9.7 m²'],
+  players:[], claims:[null, null, null]};
+
+let room = null, key = null, base = '', client = null, creating = false;
+let isHost = false, myId = '', st = clone(DEF), gotState = false, lastStateAt = 0;
+let conn = 'connecting', offset = 0, synced = false, syncRtt = 0, pingN = 0, pingTimer = 0;
+let pending = null, flash = '', flashUntil = 0, resetArmed = 0, lastSig = '', lastPrice = '';
+let formVer = -1, stateVer = 0, fatal = '';
+const samples = [];
+const pend = {};         // host only: room index -> {list, timer}
+let inq = Promise.resolve(), outq = Promise.resolve();
+
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function rid(n){ let s = ''; while(s.length < n) s += Math.random().toString(36).slice(2); return s.slice(0, n); }
+function now(){ return Date.now() + offset; }
+function num(v, def, min, max){ const x = Number(v); return isFinite(x) ? Math.min(max, Math.max(min, x)) : def; }
+function cleanName(v){ return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 24) : ''; }
+function eur(x){
+  const r = Math.round(x * 100) / 100, whole = Math.abs(r % 1) < 1e-9;
+  return (r < 0 ? '−' : '') + '€' + Math.abs(r).toLocaleString('en-GB', {minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2});
+}
+function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+function setText(node, t){ if(node.textContent !== t) node.textContent = t; }
+
+/* ---------- storage, scoped to this room on this device ---------- */
+const sk = k => 'fha:' + base + ':' + (room.profile || '') + ':' + k;
+function lsGet(k){ try{ return localStorage.getItem(sk(k)); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(sk(k), v); }catch(e){} }
+
+/* ---------- encryption: the room key lives only in the link ---------- */
+function b64uEncode(u8){
+  let s = ''; for(const b of u8) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64uDecode(str){
+  const s = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - str.length % 4) % 4));
+  const u8 = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return u8;
+}
+async function deriveKeys(secret){
+  const raw = b64uDecode(secret);
+  key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', raw));
+  base = 'fha1/' + Array.from(h.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function seal(obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv); out.set(ct, 12);
+  return b64uEncode(out);
+}
+async function unseal(str){
+  const buf = b64uDecode(str);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:buf.slice(0, 12)}, key, buf.slice(12));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* ---------- state, validated whenever it arrives from outside ---------- */
+function cleanState(d){
+  const o = clone(DEF);
+  if(!d || typeof d !== 'object') return o;
+  o.v = Math.floor(num(d.v, 0, 0, 1e9));
+  o.run = Math.floor(num(d.run, 0, 0, 1e6));
+  o.startAt = num(d.startAt, 0, 0, 1e14);
+  o.ht = num(d.ht, 0, 0, 1e14);
+  const c = d.cfg && typeof d.cfg === 'object' ? d.cfg : {};
+  o.cfg.start = num(c.start, DEF.cfg.start, 1, 100000);
+  o.cfg.step = num(c.step, DEF.cfg.step, 1, 10000);
+  o.cfg.tick = num(c.tick, DEF.cfg.tick, 1, 3600);
+  o.cfg.total = num(c.total, DEF.cfg.total, 1, 1000000);
+  if(Array.isArray(d.rooms)){
+    const r = d.rooms.filter(x => typeof x === 'string' && x.trim()).slice(0, 8).map(x => x.trim().slice(0, 60));
+    if(r.length >= 2) o.rooms = r;
+  }
+  o.players = [];
+  if(Array.isArray(d.players)){
+    d.players.slice(0, 8).forEach(p => {
+      const name = p && cleanName(p.name);
+      if(name && typeof p.id === 'string' && /^[A-Za-z0-9]{1,40}$/.test(p.id)) o.players.push({id:p.id, name, proxy:!!p.proxy});
+    });
+  }
+  o.claims = o.rooms.map((_, i) => {
+    const x = Array.isArray(d.claims) ? d.claims[i] : null;
+    if(!x || typeof x.pid !== 'string' || !isFinite(Number(x.price))) return null;
+    return {pid:x.pid, name:cleanName(x.name) || 'Someone', price:Number(x.price), t:num(x.t, 0, 0, 1e14)};
+  });
+  return o;
+}
+function strip(s){ const c = clone(s); delete c.ht; return c; }
+function claimsForModel(){ return st.claims.map(c => c ? {owner:c.pid, name:c.name, price:c.price} : null); }
+function model(){ return E.model(st.cfg, st.rooms.length, claimsForModel(), st.players, st.startAt, now()); }
+function playerById(id){ return st.players.find(p => p.id === id) || null; }
+function me(){ return playerById(myId); }
+function roomOf(M, pid){ return M.rows.findIndex(r => r && r.owner === pid); }
+function hostOffline(){ return !isHost && gotState && Date.now() - lastStateAt > HOST_GONE; }
+function ready(){ return conn === 'online' && gotState && synced && !hostOffline() && !fatal; }
+function setFlash(msg){ flash = msg; flashUntil = Date.now() + 8000; }
+
+/* ---------- connection ---------- */
+function send(suffix, obj, opts){
+  if(!client) return;
+  outq = outq.then(() => seal(obj)).then(s => { client.publish(base + '/' + suffix, s, opts || {qos:1}); }).catch(() => {});
+}
+function publishState(bump){
+  if(bump !== false){ st.v++; stateVer++; }
+  st.ht = Date.now();
+  lsSet('state', JSON.stringify(st));
+  send('state', st, {qos:1, retain:true});
+}
+function connect(){
+  if(typeof mqtt === 'undefined'){ fatal = "The messaging library didn't load. Check your connection and reload."; render(); return; }
+  let ever = false;
+  const c = mqtt.connect(BROKERS[room.b], {clientId:'fha_' + rid(10), clean:true, keepalive:20, reconnectPeriod:1500, connectTimeout:8000});
+  client = c;
+  const failover = creating ? setTimeout(() => {
+    if(ever) return;
+    c.end(true);
+    if(room.b + 1 < BROKERS.length){ room.b++; connect(); }
+    else { fatal = 'None of the relay servers answered. Check your connection and try again.'; render(); }
+  }, 7000) : 0;
+  c.on('connect', () => {
+    if(c !== client) return;
+    ever = true; clearTimeout(failover);
+    if(creating){
+      creating = false;
+      history.replaceState(null, '', '#' + room.secret + '.' + room.b);
+      $('link').value = inviteLink();
+    }
+    conn = 'online';
+    if(isHost){ c.subscribe(base + '/up', {qos:1}); publishState(false); }
+    else { c.subscribe([base + '/state', base + '/to/' + myId], {qos:1}); startSync(); }
+    render();
+  });
+  c.on('reconnect', () => { if(c === client){ conn = 'connecting'; render(); } });
+  c.on('close', () => { if(c === client && conn === 'online'){ conn = 'offline'; render(); } });
+  c.on('error', () => {});
+  c.on('message', (topic, payload) => {
+    if(c !== client) return;
+    const text = payload.toString();
+    inq = inq.then(() => unseal(text)).then(m => handle(topic, m)).catch(() => {});
+  });
+}
+function handle(topic, m){
+  if(!m || typeof m !== 'object') return;
+  if(topic === base + '/state'){
+    if(isHost) return;
+    const next = cleanState(m);
+    const changed = JSON.stringify(strip(next)) !== JSON.stringify(strip(st));
+    st = next; gotState = true; lastStateAt = Date.now();
+    if(changed){ stateVer++; afterState(); }
+    render();
+  } else if(topic === base + '/up'){
+    if(!isHost) return;
+    if(m.k === 'join') hJoin(m);
+    else if(m.k === 'leave') hLeave(m);
+    else if(m.k === 'claim') hClaim(m, Date.now());
+    else if(m.k === 'ping' && typeof m.cid === 'string' && /^[A-Za-z0-9]{1,40}$/.test(m.cid)){
+      send('to/' + m.cid, {k:'pong', n:m.n, t0:m.t0, th:Date.now()}, {qos:0});
+    }
+  } else if(topic === base + '/to/' + myId){
+    if(m.k === 'pong') onPong(m);
+    else if(m.k === 'no'){ setFlash(String(m.why || 'The host said no.').slice(0, 120)); render(); }
+  }
+}
+
+/* ---------- clock: guests measure their offset from the host ---------- */
+function startSync(){
+  clearTimeout(pingTimer);
+  let burst = 0;
+  const go = () => {
+    if(conn === 'online') send('up', {k:'ping', cid:myId, n:++pingN, t0:Date.now()}, {qos:0});
+    burst++;
+    pingTimer = setTimeout(go, burst < 6 ? 500 : 15000);
+  };
+  go();
+}
+function onPong(m){
+  const t1 = Date.now(), t0 = Number(m.t0), th = Number(m.th);
+  if(!isFinite(t0) || !isFinite(th) || t1 < t0) return;
+  samples.push({rtt:t1 - t0, off:th - (t0 + t1) / 2});
+  if(samples.length > 8) samples.shift();
+  let best = samples[0];
+  samples.forEach(s => { if(s.rtt < best.rtt) best = s; });
+  offset = Math.round(best.off); syncRtt = best.rtt; synced = true;
+}
+
+/* ---------- host: the one browser that decides ---------- */
+function hJoin(m){
+  const name = cleanName(m.name);
+  if(!name || typeof m.pid !== 'string' || !/^[A-Za-z0-9]{1,40}$/.test(m.pid)) return;
+  if(playerById(m.pid)) return;
+  const same = st.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if(same){
+    if(same.id === myId){ send('to/' + m.pid, {k:'no', why:'That name is taken.'}); return; }
+    const old = same.id;             // same name on a new device: move the player there
+    same.id = m.pid; same.proxy = false;
+    st.claims.forEach(c => { if(c && c.pid === old) c.pid = m.pid; });
+  } else {
+    if(st.players.length >= st.rooms.length){ send('to/' + m.pid, {k:'no', why:'All places are taken.'}); return; }
+    st.players.push({id:m.pid, name, proxy:false});
+  }
+  publishState(); afterState(); render();
+}
+function hLeave(m){
+  if(st.startAt) return;
+  const k = st.players.findIndex(p => p.id === m.pid);
+  if(k < 0) return;
+  st.players.splice(k, 1);
+  publishState(); afterState(); render();
+}
+function hClaim(m, arrival){
+  const i = Number(m.room);
+  if(m.run !== st.run || !Number.isInteger(i) || i < 0 || i >= st.rooms.length) return;
+  const M = model();
+  if(M.phase !== 'running' || M.rows[i]) return;
+  if(!playerById(m.pid) || roomOf(M, m.pid) >= 0) return;
+  let t = Number(m.t);
+  if(!(t <= arrival + 300 && t >= arrival - 3000)) t = arrival;
+  let p = pend[i];
+  if(!p) p = pend[i] = {list:[], timer:setTimeout(() => settle(i), SETTLE)};
+  if(!p.list.some(c => c.pid === m.pid)) p.list.push({pid:m.pid, t, price:Number(m.price)});
+}
+function awardPrice(c){
+  let sum = 0, cnt = 0;
+  st.claims.forEach(x => { if(x){ sum += x.price; cnt++; } });
+  const u = st.rooms.length - cnt;
+  const floor = E.round2((st.cfg.total - sum) / u);
+  if(u === 1) return floor;
+  let P = Math.max(floor, E.clock(st.cfg, st.startAt, c.t));
+  // Honour the price the person saw when it is within one step of the host's own reading.
+  if(isFinite(c.price) && c.price >= floor && Math.abs(c.price - P) <= st.cfg.step) P = c.price;
+  return E.round2(P);
+}
+function settle(i){
+  const p = pend[i];
+  delete pend[i];
+  if(!p || st.claims[i] || !st.startAt) return;
+  p.list.sort((a, b) => a.t - b.t || (a.pid < b.pid ? -1 : 1));
+  for(const c of p.list){
+    const pl = playerById(c.pid);
+    if(!pl || st.claims.some(x => x && x.pid === c.pid)) continue;
+    st.claims[i] = {pid:c.pid, name:pl.name, price:awardPrice(c), t:c.t};
+    break;
+  }
+  publishState(); afterState(); render();
+}
+function hostMsg(t){ $('hostmsg').textContent = t || ''; }
+function readForm(){
+  const rooms = $('cfg-rooms').value.split('\n').map(x => x.trim().slice(0, 60)).filter(Boolean).slice(0, 8);
+  const cfg = {
+    total:num($('cfg-total').value, NaN, 1, 1000000),
+    start:num($('cfg-start').value, NaN, 1, 100000),
+    step:num($('cfg-step').value, NaN, 1, 10000),
+    tick:num($('cfg-tick').value, NaN, 1, 3600)
+  };
+  if(rooms.length < 2) return {err:'List at least two rooms.'};
+  if(!isFinite(cfg.total) || !isFinite(cfg.start) || !isFinite(cfg.step) || !isFinite(cfg.tick)) return {err:'Fill in all four numbers.'};
+  if(cfg.start * rooms.length <= cfg.total) return {err:'The opening price is too low: all rooms at that price must add up to more than the total.'};
+  return {rooms, cfg};
+}
+function hostSave(startAt, bump, keep){
+  const f = keep ? {rooms:st.rooms, cfg:st.cfg} : readForm();
+  if(f.err){ hostMsg(f.err); return false; }
+  if(st.players.length > f.rooms.length){ hostMsg('There are more players than rooms. Remove a player first.'); return false; }
+  if(startAt && st.players.length !== f.rooms.length){
+    hostMsg('You need ' + f.rooms.length + ' players to start, and ' + st.players.length + ' have joined.'); return false;
+  }
+  Object.keys(pend).forEach(k => { clearTimeout(pend[k].timer); delete pend[k]; });
+  st.cfg = f.cfg; st.rooms = f.rooms; st.claims = f.rooms.map(() => null);
+  st.startAt = startAt;
+  if(bump) st.run++;
+  pending = null; hostMsg(''); formVer = -1;
+  publishState(); afterState(); render();
+  return true;
+}
+
+/* ---------- actions ---------- */
+function take(i, pid){
+  const M = model();
+  if(M.phase !== 'running' || pending || M.rows[i] || !ready()) return;
+  if(!playerById(pid) || roomOf(M, pid) >= 0) return;
+  if(!isHost && pid !== myId) return;
+  const msg = {k:'claim', pid, room:i, price:E.round2(M.price), t:now(), run:st.run};
+  pending = {room:i, pid, run:st.run, until:Date.now() + 6000};
+  flash = '';
+  if(isHost) hClaim(msg, Date.now()); else send('up', msg);
+  render();
+}
+function join(raw){
+  const name = cleanName(raw);
+  if(!name) return;
+  if(!ready()){ setFlash('Still connecting. Try again in a moment.'); render(); return; }
+  if(isHost) hJoin({pid:myId, name}); else send('up', {k:'join', pid:myId, name});
+}
+function afterState(){
+  if(!pending) return;
+  if(st.run !== pending.run || !st.startAt){ pending = null; return; }
+  const c = st.claims[pending.room];
+  if(!c) return;
+  if(c.pid === pending.pid) setFlash((c.pid === myId ? 'You got it' : c.name + ' got it') + ' at ' + eur(c.price) + '.');
+  else setFlash(c.name + ' clicked first.');
+  pending = null;
+}
+function inviteLink(){ return location.origin + location.pathname + '#' + room.secret + '.' + room.b; }
+
+/* ---------- rendering ---------- */
+function build(M){
+  const n = st.rooms.length, mine = me();
+  const okToClick = M.phase === 'running' && !pending && ready();
+  const box = $('rooms');
+  box.textContent = '';
+  for(let i = 0; i < n; i++){
+    const r = M.rows[i];
+    const row = el('div', 'room' + (r ? ' taken' : '') + (r && r.owner === myId ? ' mine' : ''));
+    const info = el('div');
+    info.appendChild(el('span', 'rname', st.rooms[i]));
+    info.appendChild(el('span', 'rmeta', r ? (r.auto ? 'Last room, for what is left' : 'Taken') : (M.phase === 'idle' ? 'Opens at' : 'Open')));
+    row.appendChild(info);
+    const pr = el('div', 'rprice'); pr.id = 'price-' + i; row.appendChild(pr);
+    const act = el('div', 'ract');
+    if(r){
+      act.appendChild(el('span', 'owner', r.name + (r.owner === myId ? ' (you)' : '')));
+    } else if(M.phase === 'running' || M.phase === 'lead'){
+      if(mine && roomOf(M, mine.id) < 0){
+        const b = el('button', 'take'); b.type = 'button'; b.id = 'take-' + i;
+        b.dataset.room = i; b.dataset.pid = mine.id;
+        b.disabled = !okToClick; act.appendChild(b);
+      }
+      if(isHost){
+        st.players.forEach(p => {
+          if(!p.proxy || p.id === myId || roomOf(M, p.id) >= 0) return;
+          const pb = el('button', 'ghost', 'Take for ' + p.name); pb.type = 'button';
+          pb.dataset.room = i; pb.dataset.pid = p.id;
+          pb.disabled = !okToClick; act.appendChild(pb);
+        });
+      }
+    }
+    row.appendChild(act);
+    box.appendChild(row);
+  }
+  box.hidden = !gotState;
+
+  const ul = $('players');
+  ul.textContent = '';
+  if(!st.players.length) ul.appendChild(el('li', 'empty', 'Nobody has joined yet.'));
+  st.players.forEach(p => {
+    const li = el('li', 'chip' + (p.id === myId ? ' you' : ''));
+    li.appendChild(el('span', 'av', p.name.slice(0, 1).toUpperCase()));
+    li.appendChild(el('span', '', p.name + (p.id === myId ? ' (you)' : '')));
+    const k = roomOf(M, p.id);
+    if(k >= 0) li.appendChild(el('small', '', eur(M.rows[k].price)));
+    else if(p.proxy) li.appendChild(el('small', '', 'host clicks'));
+    if(M.phase === 'idle' && (isHost || p.id === myId)){
+      const rb = el('button', '', p.id === myId ? 'leave' : 'remove'); rb.type = 'button';
+      rb.dataset.remove = p.id; li.appendChild(rb);
+    }
+    ul.appendChild(li);
+  });
+  $('players-sec').hidden = !gotState;
+  $('invite').hidden = !gotState;
+  $('rules-sec').hidden = !gotState;
+  $('joinform').hidden = !gotState || !!mine || st.players.length >= n;
+
+  let note = '';
+  if(fatal) note = fatal;
+  else if(conn === 'offline') note = 'Connection lost. Trying to reconnect…';
+  else if(hostOffline()) note = "The host's page is closed or offline. The auction continues when they are back.";
+  $('note').textContent = note; $('note').hidden = !note;
+
+  $('rules').textContent = 'All ' + n + ' rooms open at ' + eur(st.cfg.start) + '. Every ' + st.cfg.tick +
+    ' seconds each unclaimed room drops ' + eur(st.cfg.step) + '. The first person to click a room gets it at the price shown, and that is final. ' +
+    'Prices stop dropping when the rooms add up to ' + eur(st.cfg.total) + '. The last person gets the last room for what is left.';
+
+  $('result').hidden = M.phase !== 'done';
+  if(M.phase === 'done'){
+    const tb = $('result-body');
+    tb.textContent = '';
+    let sum = 0;
+    const lines = [];
+    M.rows.forEach((r, k) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', '', st.rooms[k]));
+      tr.appendChild(el('td', '', r.name));
+      tr.appendChild(el('td', 'num', eur(r.price)));
+      tb.appendChild(tr);
+      sum += r.price;
+      lines.push(st.rooms[k] + ': ' + r.name + ', ' + eur(r.price));
+    });
+    const tr2 = el('tr', 'total');
+    tr2.appendChild(el('td', '', 'Total')); tr2.appendChild(el('td', '', '')); tr2.appendChild(el('td', 'num', eur(sum)));
+    tb.appendChild(tr2);
+    lines.push('Total: ' + eur(sum));
+    $('copytext').value = lines.join('\n');
+  }
+
+  $('host').hidden = !isHost;
+  if(isHost){
+    $('start').disabled = M.phase !== 'idle';
+    $('save').disabled = M.phase !== 'idle';
+    $('reset').disabled = M.phase === 'idle';
+    $('start').textContent = 'Start run ' + (st.run + 1);
+    if(formVer !== stateVer && !$('host').contains(document.activeElement)){
+      $('cfg-rooms').value = st.rooms.join('\n');
+      $('cfg-total').value = st.cfg.total; $('cfg-start').value = st.cfg.start;
+      $('cfg-step').value = st.cfg.step; $('cfg-tick').value = st.cfg.tick;
+      formVer = stateVer;
+    }
+  }
+
+  const pill = $('conn');
+  pill.hidden = false;
+  pill.className = 'pill' + (conn === 'online' && !hostOffline() ? ' on' : conn === 'offline' || hostOffline() ? ' off' : '');
+  pill.textContent = conn === 'online' ? (hostOffline() ? 'Host offline' : 'Live') : conn === 'offline' ? 'Offline' : 'Connecting';
+}
+
+function tickText(M){
+  const n = st.rooms.length;
+  let s, ringOn = false, frac = 0, ringNum = '';
+  if(fatal) s = 'Something went wrong';
+  else if(!gotState) s = conn === 'online' ? 'Looking for the host…' : 'Connecting…';
+  else if(M.phase === 'idle') s = isHost ? (st.players.length === n ? 'Everyone is in. Start when ready.' : 'Waiting for players') : 'Waiting for the host to start';
+  else if(M.phase === 'lead'){ s = 'Get ready'; ringOn = true; frac = M.startsIn / LEAD; ringNum = String(Math.ceil(M.startsIn / 1000)); }
+  else if(M.phase === 'running'){
+    if(M.atFloor) s = 'Prices have stopped dropping';
+    else { s = 'Next drop of ' + eur(st.cfg.step); ringOn = true; frac = M.nextDropIn / (st.cfg.tick * 1000); ringNum = String(Math.ceil(M.nextDropIn / 1000)); }
+  } else s = 'All rooms are taken';
+  setText($('status'), s);
+  $('ring').hidden = !ringOn;
+  if(ringOn){
+    $('arc').style.strokeDashoffset = String(RING * (1 - Math.max(0, Math.min(1, frac))));
+    setText($('ringnum'), ringNum);
+  }
+
+  let priceNow = '';
+  for(let i = 0; i < n; i++){
+    const r = M.rows[i], p = $('price-' + i), b = $('take-' + i);
+    const txt = eur(r ? r.price : (M.phase === 'running' ? M.price : st.cfg.start));
+    if(!r) priceNow = txt;
+    if(p && p.textContent !== txt){
+      p.textContent = txt;
+      if(!r && M.phase === 'running' && lastPrice && lastPrice !== txt){
+        p.classList.remove('drop'); void p.offsetWidth; p.classList.add('drop');
+      }
+    }
+    if(b) setText(b, pending && pending.room === i && pending.pid === b.dataset.pid ? 'Checking…' : M.phase === 'running' ? 'Take it at ' + txt : 'Take it');
+  }
+  lastPrice = M.phase === 'running' ? priceNow : '';
+
+  const mine = me();
+  let mt = '';
+  if(!gotState) mt = '';
+  else if(mine){
+    const k = roomOf(M, mine.id);
+    if(k >= 0) mt = 'You have ' + st.rooms[k] + ' at ' + eur(M.rows[k].price) + '.';
+    else if(M.phase === 'running') mt = M.atFloor ? 'First click still wins.' : 'You are ' + mine.name + '. Click a room when the price is right.';
+    else if(M.phase === 'lead') mt = 'All rooms open at ' + eur(st.cfg.start) + '.';
+    else mt = 'You are in as ' + mine.name + '. ' + st.players.length + ' of ' + n + ' players have joined.';
+  } else if(st.players.length >= n) mt = 'All places are taken. You are watching.';
+  else mt = 'Enter your name to join. ' + st.players.length + ' of ' + n + ' players have joined.';
+  if(M.phase === 'done') mt = (mine && roomOf(M, mine.id) >= 0 ? mt + ' ' : '') + 'The rooms add up to ' + eur(st.cfg.total) + '.';
+  setText($('me'), mt);
+
+  if(pending && Date.now() > pending.until){ pending = null; setFlash('No answer from the host. Try again.'); }
+  if(flash && Date.now() > flashUntil) flash = '';
+  setText($('flash'), flash); $('flash').hidden = !flash;
+  if(resetArmed && Date.now() > resetArmed){ resetArmed = 0; $('reset').textContent = 'Stop and reset'; }
+
+  let ft = '';
+  if(room){
+    const relay = BROKERS[room.b].replace(/^wss:\/\//, '').replace(/[:/].*$/, '');
+    ft = 'Run ' + st.run + ' · ' + (isHost ? 'You are the host: keep this page open.' : synced ? 'Clock matched to the host (±' + Math.round(syncRtt / 2) + ' ms).' : 'Matching the clock…') +
+      ' Messages are encrypted in your browser and relayed by ' + relay + '.';
+  }
+  setText($('foot'), ft);
+}
+
+function render(){
+  if(!room) return;
+  const M = model();
+  const sig = JSON.stringify([M.phase, strip(st), M.rows, myId, pending, isHost, conn, hostOffline(), synced, gotState, fatal, stateVer]);
+  if(sig !== lastSig){ lastSig = sig; build(M); }
+  tickText(M);
+}
+
+/* ---------- events ---------- */
+$('rooms').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-room]');
+  if(b && !b.disabled) take(Number(b.dataset.room), b.dataset.pid);
+});
+$('players').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-remove]');
+  if(!b) return;
+  const pid = b.dataset.remove;
+  if(isHost) hLeave({pid}); else if(pid === myId) send('up', {k:'leave', pid});
+});
+$('joinform').addEventListener('submit', ev => { ev.preventDefault(); join($('join-name').value); });
+$('proxyform').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const name = cleanName($('proxy-name').value);
+  if(!name) return;
+  if(st.players.length >= st.rooms.length){ hostMsg('All places are taken. Remove a player first.'); return; }
+  if(st.players.some(p => p.name.toLowerCase() === name.toLowerCase())){ hostMsg('That name is already in.'); return; }
+  st.players.push({id:'x' + rid(12), name, proxy:true});
+  $('proxy-name').value = ''; hostMsg('');
+  publishState(); render();
+});
+$('start').addEventListener('click', () => {
+  if(hostSave(Date.now() + LEAD, true) && navigator.wakeLock){ navigator.wakeLock.request('screen').catch(() => {}); }
+});
+$('save').addEventListener('click', () => { if(hostSave(0, false)) hostMsg('Saved.'); });
+$('reset').addEventListener('click', () => {
+  if(!resetArmed){ resetArmed = Date.now() + 4000; $('reset').textContent = 'Click again to reset'; return; }
+  resetArmed = 0; $('reset').textContent = 'Stop and reset';
+  hostSave(0, false, true);
+});
+function copyFrom(input, msgNode, btn){
+  const text = input.value;
+  const done = () => { if(msgNode) msgNode.textContent = 'Copied.'; else { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); } };
+  const fallback = () => { input.hidden = false; input.focus(); input.select(); if(msgNode) msgNode.textContent = 'Select and copy the text below.'; };
+  try{ navigator.clipboard.writeText(text).then(done, fallback); }catch(e){ fallback(); }
+}
+$('copy').addEventListener('click', () => copyFrom($('copytext'), $('copymsg'), $('copy')));
+$('copylink').addEventListener('click', () => copyFrom($('link'), null, $('copylink')));
+$('link').addEventListener('focus', () => $('link').select());
+
+/* ---------- start ---------- */
+function parseHash(){
+  const h = location.hash.replace(/^#/, '');
+  if(!h) return null;
+  const parts = h.split('.');
+  const b = Number(parts[1] || 0);
+  if(!/^[A-Za-z0-9_-]{22}$/.test(parts[0]) || !Number.isInteger(b) || b < 0 || b >= BROKERS.length) return {bad:true};
+  return {secret:parts[0], b, profile:(parts[2] || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12)};
+}
+async function enterRoom(r, asCreator){
+  room = r;
+  try{ await deriveKeys(r.secret); }
+  catch(e){ room = null; showLanding('That link is incomplete. Ask for it again, or create a new room.'); return; }
+  if(asCreator) lsSet('host', '1');
+  isHost = lsGet('host') === '1';
+  myId = lsGet('id') || '';
+  if(!/^[A-Za-z0-9]{1,40}$/.test(myId)){ myId = 'p' + rid(12); lsSet('id', myId); }
+  if(isHost){
+    let saved = null;
+    try{ saved = JSON.parse(lsGet('state') || 'null'); }catch(e){}
+    st = cleanState(saved); gotState = true; offset = 0; synced = true;
+  }
+  $('landing').hidden = true; $('app').hidden = false;
+  $('link').value = inviteLink();
+  connect();
+  setInterval(render, 200);
+  if(isHost) setInterval(() => { if(conn === 'online') publishState(false); }, BEAT);
+  render();
+}
+function showLanding(msg){
+  $('app').hidden = true; $('landing').hidden = false;
+  $('createmsg').textContent = msg || '';
+}
+$('create').addEventListener('click', () => {
+  $('create').disabled = true;
+  $('createmsg').textContent = 'Setting up the room…';
+  creating = true;
+  enterRoom({secret:b64uEncode(crypto.getRandomValues(new Uint8Array(16))), b:0, profile:''}, true);
+});
+window.addEventListener('hashchange', () => location.reload());
+
+if(!window.crypto || !crypto.subtle){
+  showLanding('This page needs a secure (https) connection to work.');
+  $('create').disabled = true;
+} else {
+  const r = parseHash();
+  if(!r) showLanding('');
+  else if(r.bad) showLanding('That link is incomplete. Ask for it again, or create a new room.');
+  else enterRoom(r, false);
+}
+})();
+</script>
+</body>
+</html>
