@@ -48,8 +48,12 @@ h2{font-family:var(--display);font-size:.8125rem;font-weight:600;letter-spacing:
 .landing{display:flex;flex-direction:column;gap:18px;align-items:flex-start;padding:28px 0 8px}
 .landing p{max-width:58ch;color:var(--muted)}
 
-.status{display:flex;align-items:center;justify-content:space-between;gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px}
+.status{display:flex;flex-direction:column;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px}
+.statusrow{display:flex;align-items:center;justify-content:space-between;gap:18px}
 .statustext{min-width:0}
+.trackbar{height:6px;border-radius:999px;background:var(--soft);overflow:hidden}
+.trackfill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .12s linear}
+.tracklabels{display:flex;justify-content:space-between;gap:12px;margin-top:7px;font-size:.8125rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .big{font-family:var(--display);font-size:clamp(1.5rem,4.6vw,2.1rem);font-weight:600;line-height:1.15;letter-spacing:-.02em;text-wrap:balance;font-variant-numeric:tabular-nums}
 .sub{margin-top:6px;color:var(--muted)}
 .flash{margin-top:8px;font-weight:600;color:var(--ok)}
@@ -81,6 +85,8 @@ button{font:inherit;color:var(--ink);cursor:pointer}
 .take:active:not(:disabled){transform:translateY(1px)}
 .ghost{background:transparent;border:1px solid var(--line);border-radius:10px;padding:9px 13px}
 .ghost:hover:not(:disabled){background:var(--soft)}
+.ghost.sm{padding:6px 10px;font-size:.875rem;flex:1;white-space:nowrap}
+.proxies{display:flex;flex-wrap:wrap;gap:6px}
 button:disabled{opacity:.45;cursor:default}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -149,14 +155,20 @@ footer{color:var(--muted);font-size:.8125rem}
   <main id="app" hidden>
     <div class="page" style="padding:0;gap:22px">
       <section class="status">
-        <div class="statustext">
-          <p id="status" class="big" aria-live="polite">Connecting…</p>
-          <p id="me" class="sub"></p>
-          <p id="flash" class="flash" aria-live="polite" hidden></p>
+        <div class="statusrow">
+          <div class="statustext">
+            <p id="status" class="big" aria-live="polite">Connecting…</p>
+            <p id="me" class="sub"></p>
+            <p id="flash" class="flash" aria-live="polite" hidden></p>
+          </div>
+          <div class="ring" id="ring" aria-hidden="true" hidden>
+            <svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="27"/><circle class="arc" id="arc" cx="32" cy="32" r="27"/></svg>
+            <span id="ringnum"></span>
+          </div>
         </div>
-        <div class="ring" id="ring" aria-hidden="true" hidden>
-          <svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="27"/><circle class="arc" id="arc" cx="32" cy="32" r="27"/></svg>
-          <span id="ringnum"></span>
+        <div id="track" hidden>
+          <div class="trackbar"><div class="trackfill" id="trackfill"></div></div>
+          <div class="tracklabels"><span id="track-from"></span><span id="track-to"></span></div>
         </div>
       </section>
 
@@ -635,12 +647,15 @@ function build(M){
         b.disabled = !okToClick; act.appendChild(b);
       }
       if(isHost){
+        const px = el('div', 'proxies');
         st.players.forEach(p => {
           if(!p.proxy || p.id === myId || roomOf(M, p.id) >= 0) return;
-          const pb = el('button', 'ghost', 'Take for ' + p.name); pb.type = 'button';
+          const pb = el('button', 'ghost sm', 'For ' + p.name); pb.type = 'button';
+          pb.setAttribute('aria-label', 'Take ' + st.rooms[i] + ' for ' + p.name);
           pb.dataset.room = i; pb.dataset.pid = p.id;
-          pb.disabled = !okToClick; act.appendChild(pb);
+          pb.disabled = !okToClick; px.appendChild(pb);
         });
+        if(px.children.length) act.appendChild(px);
       }
     }
     row.appendChild(act);
@@ -675,8 +690,8 @@ function build(M){
   else if(hostOffline()) note = "The host's page is closed or offline. The auction continues when they are back.";
   $('note').textContent = note; $('note').hidden = !note;
 
-  $('rules').textContent = 'All ' + n + ' rooms open at ' + eur(st.cfg.start) + '. Every ' + st.cfg.tick +
-    ' seconds each unclaimed room drops ' + eur(st.cfg.step) + '. The first person to click a room gets it at the price shown, and that is final. ' +
+  $('rules').textContent = 'All ' + n + ' rooms open at ' + eur(st.cfg.start) + '. Every ' +
+    (st.cfg.tick === 1 ? 'second' : st.cfg.tick + ' seconds') + ' each unclaimed room drops ' + eur(st.cfg.step) + '. The first person to click a room gets it at the price shown, and that is final. ' +
     'Prices stop dropping when the rooms add up to ' + eur(st.cfg.total) + '. The last person gets the last room for what is left.';
 
   $('result').hidden = M.phase !== 'done';
@@ -723,6 +738,7 @@ function build(M){
 
 function tickText(M){
   const n = st.rooms.length;
+  const fast = st.cfg.tick < 4;     // too quick for a per-drop countdown to be readable
   let s, ringOn = false, frac = 0, ringNum = '';
   if(fatal) s = 'Something went wrong';
   else if(!gotState) s = conn === 'online' ? 'Looking for the host…' : 'Connecting…';
@@ -730,6 +746,7 @@ function tickText(M){
   else if(M.phase === 'lead'){ s = 'Get ready'; ringOn = true; frac = M.startsIn / LEAD; ringNum = String(Math.ceil(M.startsIn / 1000)); }
   else if(M.phase === 'running'){
     if(M.atFloor) s = 'Prices have stopped dropping';
+    else if(fast) s = 'Dropping ' + eur(st.cfg.step) + ' every ' + (st.cfg.tick === 1 ? 'second' : st.cfg.tick + ' seconds');
     else { s = 'Next drop of ' + eur(st.cfg.step); ringOn = true; frac = M.nextDropIn / (st.cfg.tick * 1000); ringNum = String(Math.ceil(M.nextDropIn / 1000)); }
   } else s = 'All rooms are taken';
   setText($('status'), s);
@@ -739,6 +756,19 @@ function tickText(M){
     setText($('ringnum'), ringNum);
   }
 
+  // How far prices have fallen between the opening price and where they will stop.
+  const trackOn = gotState && !fatal && (M.phase === 'lead' || M.phase === 'running');
+  $('track').hidden = !trackOn;
+  if(trackOn){
+    const lo = M.phase === 'running' ? M.floor : E.round2(st.cfg.total / n);
+    const span = st.cfg.start - lo;
+    const fallen = M.phase === 'running' ? (now() - st.startAt) / (st.cfg.tick * 1000) * st.cfg.step : 0;
+    const f = span > 0 ? Math.max(0, Math.min(1, fallen / span)) : 1;
+    $('trackfill').style.width = (f * 100).toFixed(2) + '%';
+    setText($('track-from'), 'Opened at ' + eur(st.cfg.start));
+    setText($('track-to'), 'Stops at ' + eur(lo));
+  }
+
   let priceNow = '';
   for(let i = 0; i < n; i++){
     const r = M.rows[i], p = $('price-' + i), b = $('take-' + i);
@@ -746,7 +776,7 @@ function tickText(M){
     if(!r) priceNow = txt;
     if(p && p.textContent !== txt){
       p.textContent = txt;
-      if(!r && M.phase === 'running' && lastPrice && lastPrice !== txt){
+      if(!r && M.phase === 'running' && !fast && lastPrice && lastPrice !== txt){
         p.classList.remove('drop'); void p.offsetWidth; p.classList.add('drop');
       }
     }
@@ -856,7 +886,7 @@ async function enterRoom(r, asCreator){
   $('landing').hidden = true; $('app').hidden = false;
   $('link').value = inviteLink();
   connect();
-  setInterval(render, 200);
+  setInterval(render, 100);
   if(isHost) setInterval(() => { if(conn === 'online') publishState(false); }, BEAT);
   render();
 }
